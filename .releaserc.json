@@ -1,0 +1,30 @@
+{
+  "branches": ["main"],
+  "repositoryUrl": "https://github.com/ambimax/magento2-deployscripts",
+  "debug": "true",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/github",
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md"
+      }
+    ],
+    ["@ambimax/semantic-release-composer"],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "echo \"SEMANTIC_VERSION=${nextRelease.version}\" >> $GITHUB_ENV && echo \"GIT_VERSION=v${nextRelease.version}\" >> $GITHUB_ENV"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["composer.json", "CHANGELOG.md"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ]
+  ]
+}

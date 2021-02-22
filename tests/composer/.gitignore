@@ -1,0 +1,5 @@
+project/*
+!project/composer.json
+
+artifacts/*
+!artifacts/.gitkeep

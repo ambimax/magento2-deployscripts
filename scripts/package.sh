@@ -21,8 +21,8 @@ export COLOR_WHITE="\033[0;37m"
 export COLOR_RESET="\033[0m"
 
 # Backgrounds
-export BACKGROUND_RED="\033[41m"
-export BACKGROUND_GREEN="\033[42m"
+export ERROR_COLOR="\e[41;1;37m"
+export SUCCESS_COLOR="\e[30;48;5;82m"
 
 SOURCE_DIR=$PWD
 TARGET_DIR='artifacts'
@@ -32,7 +32,7 @@ TARGET_DIR='artifacts'
 ########################################################################################################################
 
 error_exit() {
-    echo -e "\n${BACKGROUND_RED} ${1} ${COLOR_RESET}\n";
+	echo -e "\n${ERROR_COLOR} ${1} ${COLOR_RESET}"
     exit 1;
 }
 

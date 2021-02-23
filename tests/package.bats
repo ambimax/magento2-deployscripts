@@ -8,7 +8,7 @@ function teardown() {
     find "${TEST_WORKSPACE}/releases/build_dummy" -name "build.txt" -type f -delete
     find "${TEST_WORKSPACE}/releases/build_dummy" -name "version.txt" -type f -delete
     find "${TEST_WORKSPACE}/releases/build_dummy" -name ".maintenance.flag" -type f -delete
-	find "${TEST_WORKSPACE}/tmp" -type f -delete
+	find "${TEST_WORKSPACE}/tmp" -type f ! -iname ".gitkeep" -delete
 	find "${TEST_WORKSPACE}/tmp" -type d -name "package*" -exec rm -rv {} +
 }
 

@@ -18,6 +18,10 @@ Bash scripts for packaging Magento2 projects and deploying it as releases on any
     - [error_exit](#error_exit)
     - [info](#info)
     - [symlinkSharedDirectory](#symlinkshareddirectory)
+    - [waitFor](#waitfor)
+  - [References](#references)
+  - [License](#license)
+  - [Author](#author)
 
 ## Deployment Workflow
 
@@ -55,7 +59,7 @@ Triggers composer install (vendor/bin/install.sh)
 
 ```bash
 ./scripts/install.sh \
-  --release-dir "${PWD}/tests/workspace/releases/build_dummy" \
+  --project-root "${PWD}/tests/workspace/releases/build_dummy" \
   --environment staging
 ```
 
@@ -125,13 +129,19 @@ If packages are available it can be deployed
 
 The following hooks are triggered during install.sh
 
-| Hook        | Location                             |
-| ----------- | ------------------------------------ |
-| validation  | deploy/${ENVIRONMENT}/validation.sh  |
-| symlinks    | deploy/${ENVIRONMENT}/symlinks.sh    |
-| permissions | deploy/${ENVIRONMENT}/permissions.sh |
-| configure   | deploy/${ENVIRONMENT}/configure.sh   |
-| cleanup     | deploy/${ENVIRONMENT}/cleanup.sh     |
+| #   | Hook                | Location                                   |
+| --- | ------------------- | ------------------------------------------ |
+| 1   | pre                 | deploy/${ENVIRONMENT}/pre.sh               |
+| 2   | defaultvalidation\* | deploy/${ENVIRONMENT}/defaultvalidation.sh |
+| 2   | validation          | deploy/${ENVIRONMENT}/validation.sh        |
+| 2   | symlinks\*          | deploy/${ENVIRONMENT}/symlinks.sh          |
+| 2   | permissions\*       | deploy/${ENVIRONMENT}/permissions.sh       |
+| 2   | configure           | deploy/${ENVIRONMENT}/configure.sh         |
+| 2   | upgrade\*           | deploy/${ENVIRONMENT}/upgrade.sh           |
+| 2   | post                | deploy/${ENVIRONMENT}/upgrade.sh           |
+| 2   | cleanup             | deploy/${ENVIRONMENT}/cleanup.sh           |
+
+\*) Replaces default behaviour
 
 ### Sample hook
 
@@ -178,3 +188,34 @@ symlinkSharedDirectory "generated"
 # Create symlink from release/build_2020202020/var/log to shared/var/log
 symlinkSharedDirectory "var/log"
 ```
+
+### waitFor
+
+Wait for a command or connection to succeed
+
+| Parameter           | Description  |
+| ------------------- | ------------ |
+| --command <command> | Set command  |
+| --host <host>       | Set hostname |
+| --port <port>       | Set port     |
+| --timeout <seconds> | Set port     |
+
+```bash
+# Test command
+waitFor --command "/script.sh" --timeout 5
+
+# Test tcp port
+waitFor --host www.google.com --port 443 --timeout 1
+```
+
+## References
+
+- [Magento 2.4 Technical Details](https://devdocs.magento.com/guides/v2.4/config-guide/deployment/pipeline/technical-details.html)
+
+## License
+
+MIT
+
+## Author
+
+- [Tobias Schifftner](https://www.twitter.com/tschifftner), [Ambimax GmbH](https://www.ambimax.de)

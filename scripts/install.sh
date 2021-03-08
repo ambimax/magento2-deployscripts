@@ -3,7 +3,8 @@
 
 # exit when any command fails
 set -e
-shopt -s inherit_errexit
+set -o pipefail
+set -u
 
 # debug
 [ -n "${BATS_ROOT:-}" ] && set -x
@@ -23,13 +24,17 @@ export COLOR_RESET="\033[0m"
 
 # Backgrounds
 export ERROR_COLOR="\e[41;1;37m"
+export WARNING_COLOR="\e[41;1;37m"
 export SUCCESS_COLOR="\e[30;48;5;82m"
 
 # Defaults
 SCRIPTPATH=$([ -d "${0}" ] && readlink -f "${0}" || echo "")
 SCRIPTDIR=$(dirname "${SCRIPTPATH}")
-RELEASEFOLDER=$(readlink -f "${SCRIPTDIR}/../../..")
-SKIP_SYSTEMSTORAGE_IMPORT=${SKIP_SYSTEMSTORAGE_IMPORT:-true}
+FALLBACK_PROJECT_ROOT=$(readlink -f "${SCRIPTDIR}/../../..")
+PROJECT_ROOT=${PROJECT_ROOT:-"${FALLBACK_PROJECT_ROOT}"}
+SKIP_SYSTEMSTORAGE_IMPORT=${SKIP_SYSTEMSTORAGE_IMPORT:-false}
+ENVIRONMENT=${ENVIRONMENT:-}
+SHARED_DIR=${SHARED_DIR:-}
 
 function usage {
     echo ""
@@ -37,7 +42,7 @@ function usage {
     echo "$0 --project-root <projectRoot> --environment <environment> --shared-dir <sharedDir> [--skip-systemstorage-import]"
     echo ""
     echo "   -e|--environment                Environment (i.e. staging, production)"
-    echo "   -p|--project-root               Project root / extracted release folder /.../releases/build_20210201"
+    echo "   -r|--project-root               Project root / extracted release folder /.../releases/build_20210201"
     echo "   -s|--shared-dir                 Shared folder /.../shared/"
     echo "   --skip-systemstorage-import     Also download and install .extra.tar.gz package"
     echo ""
@@ -50,13 +55,13 @@ do
 key="$1"
 
 case $key in
-    -p|--project-root)
-    RELEASEFOLDER=$(echo "${2}" | sed -e "s/\/*$//")
+    -r|--project-root)
+    PROJECT_ROOT=$(echo "${2}" | sed -e "s/\/*$//")
     shift # past argument
     shift # past value
     ;;
     -s|--shared-dir)
-    SHAREDFOLDER=$(echo "${2}" | sed -e "s/\/*$//")
+    SHARED_DIR=$(echo "${2}" | sed -e "s/\/*$//")
     shift # past argument
     shift # past value
     ;;
@@ -79,10 +84,10 @@ case $key in
     ;;
 esac
 done
-set -- "${POSITIONAL[@]}" # restore positional parameters
+# [ -n "${POSITIONAL[*]}" ] && set -- "${POSITIONAL[*]}" # restore positional parameters
 
-export RELEASEFOLDER
-export SHAREDFOLDER
+export PROJECT_ROOT
+export SHARED_DIR
 export ENVIRONMENT
 export SKIP_SYSTEMSTORAGE_IMPORT
 
@@ -94,6 +99,10 @@ export SKIP_SYSTEMSTORAGE_IMPORT
 error_exit() {
 	echo -e "\n${ERROR_COLOR} ${1} ${COLOR_RESET}"
     exit 1;
+}
+
+warning() {
+	echo -e "\n${WARNING_COLOR} ${1} ${COLOR_RESET}"
 }
 
 info() {
@@ -116,14 +125,25 @@ hasTriggerHook() {
 	[[ -x $(getHookPath "$1") ]] || [[ -x $(getDefaultHookPath "$1") ]]
 }
 
-triggerHook() {
-	[ -d "${RELEASEFOLDER}" ] || error_exit "Invalid release folder ${RELEASEFOLDER}"
-	cd -P "${RELEASEFOLDER}" || error_exit "Error while switching to ${RELEASEFOLDER}"
-	if [[ -x $(getHookPath "$1") ]]; then
-		bash "$(getHookPath "$1")"
-	elif [[ -x $(getDefaultHookPath "$1") ]]; then
-		bash "$(getDefaultHookPath "$1")"
+getTriggerHook() {
+	if [[ -f $(getHookPath "$1") ]]; then
+		[[ ! -x $(getHookPath "$1") ]] && warning ""
 	fi
+}
+
+triggerHook() {
+	[ -d "${PROJECT_ROOT}" ] || error_exit "Invalid project root ${PROJECT_ROOT}"
+	cd -P "${PROJECT_ROOT}" || error_exit "Error while switching to ${PROJECT_ROOT}"
+
+	if [[ -x $(getHookPath "$1") ]]; then
+		bash "$(getHookPath "$1")" || exit 1
+		return 0
+	elif [[ -x $(getDefaultHookPath "$1") ]]; then
+		bash "$(getDefaultHookPath "$1")" || exit 1
+		return 0
+	fi
+
+	echo "No hook found for $1"
 }
 
 hookTriggered() {
@@ -131,8 +151,8 @@ hookTriggered() {
 }
 
 symlinkSharedDirectory() {
-    SOURCE="${SHAREDFOLDER}/${1}"
-    DEST="${RELEASEFOLDER}/${1}"
+    SOURCE="${SHARED_DIR}/${1}"
+    DEST="${PROJECT_ROOT}/${1}"
 
     echo "Symlinking ${SOURCE} to ${DEST}"
 
@@ -190,8 +210,8 @@ waitFor() {
 
 	# Validation
 	if [ -z "${COMMAND}" ]; then
-		[ -z "${HOST}" ] || error_exit "waitFor: Host is missing"
-		[ -z "${PORT}" ] || error_exit "waitFor: Port is missing"
+		[ -n "${HOST}" ] || error_exit "waitFor: Host ${HOST} is missing"
+		[ -n "${PORT}" ] || error_exit "waitFor: Port ${PORT} is missing"
 
 		COMMAND="echo > /dev/${PROTOCOL}/${HOST}/${PORT}"
 	fi
@@ -217,20 +237,6 @@ export -f waitFor
 triggerHook "pre"
 
 ########################################################################################################################
-info "Validation"
-########################################################################################################################
-
-if ! hookTriggered "defaultvalidation"; then
-	[ -f "${RELEASEFOLDER}/pub/index.php" ] || error_exit "Invalid release folder ${RELEASEFOLDER}"
-	[ -f "${RELEASEFOLDER}/bin/magento" ] || error_exit "Could not find bin/magento"
-
-	[ -z "${ENVIRONMENT}" ] && error_exit "Please provide an environment code (e.g. -e staging)"
-	[ -d "${RELEASEFOLDER}/deploy/${ENVIRONMENT}" ] || error_exit "Invalid environment: ${ENVIRONMENT} - No deploy/${ENVIRONMENT} directory"
-fi
-
-triggerHook "validation"
-
-########################################################################################################################
 # Info
 ########################################################################################################################
 
@@ -238,77 +244,71 @@ echo
 echo "##################################################################################################################"
 echo
 echo "Environment:            ${ENVIRONMENT}"
-echo "Project root:         ${RELEASEFOLDER}"
-echo "Shared folder:          ${SHAREDFOLDER}"
+echo "Project root:           ${PROJECT_ROOT}"
+echo "Shared folder:          ${SHARED_DIR}"
 echo "Skip Systemstorage:     ${SKIP_SYSTEMSTORAGE_IMPORT}"
 echo
 echo "##################################################################################################################"
 echo
 
 ########################################################################################################################
-info "Linking to shared directories"
+info "Validation"
 ########################################################################################################################
 
-if [ -n "${SHAREDFOLDER}" ]; then
-	if ! hookTriggered "symlinks"; then
-		# default symlinks
+if ! hookTriggered "defaultvalidation"; then
+	[ -f "${PROJECT_ROOT}/pub/index.php" ] || error_exit "Invalid project root ${PROJECT_ROOT}"
+	[ -f "${PROJECT_ROOT}/bin/magento" ] || error_exit "Could not find bin/magento"
+
+	[ -z "${ENVIRONMENT}" ] && error_exit "Please provide an environment code (e.g. -e staging)"
+	[ -d "${PROJECT_ROOT}/deploy/${ENVIRONMENT}" ] || error_exit "Invalid environment: ${ENVIRONMENT} - No deploy/${ENVIRONMENT} directory"
+fi
+
+
+########################################################################################################################
+info "Run installation"
+########################################################################################################################
+
+triggerHook "pre-install"
+
+if ! hookTriggered "install"; then
+	# default symlinks
+	if [ -n "${SHARED_DIR}" ]; then
 		symlinkSharedDirectory "pub/media"
-		symlinkSharedDirectory "generated"
 		symlinkSharedDirectory "var/log"
+		symlinkSharedDirectory "var/session"
 	fi
-else
-	echo "No shared folder set. Skipping symlinks..."
-fi
 
-########################################################################################################################
-info "Set permissions for directories"
-########################################################################################################################
-
-if ! hookTriggered "permissions"; then
 	# default folders and permissions
-	mkdir -p "${RELEASEFOLDER}"/{pub/{media,static},generated,var} || error_exit "Cannot create default directories"
-	chmod -R 774 "${RELEASEFOLDER}"/pub/{media,static} || error_exit "Cannot set permissions for directories"
-	chmod -R 775 "${RELEASEFOLDER}"/{generated,var} || error_exit "Cannot set permissions for directories"
-fi
+	mkdir -p "${PROJECT_ROOT}"/{pub/{media,static/_cache},generated,var} || error_exit "Cannot create default directories"
+	chmod -R 774 "${PROJECT_ROOT}"/pub/{media,static} || error_exit "Cannot set permissions for directories"
+	chmod -R 775 "${PROJECT_ROOT}"/{generated,var} || error_exit "Cannot set permissions for directories"
 
-
-########################################################################################################################
-info "Apply configuration settings"
-########################################################################################################################
-
-triggerHook "configure"
-
-
-########################################################################################################################
-info "Run upgrade scripts"
-########################################################################################################################
-
-if ! hookTriggered "upgrade"; then
-	echo "No hook upgrade found, therefore default bin/magento setup:upgrade triggered";
-	cd -P "${RELEASEFOLDER}/" || error_exit "Error while switching to htdocs directory"
+	# Enable maintenance
 	php bin/magento maintenance:enable
-	php bin/magento setup:upgrade --keep-generated || error_exit "Error while running setup:upgrade"
+
+	# load config
+	php bin/magento app:config:import --no-interaction || error_exit "Error while running app:config:import"
+
+	# Upgrade
+	php bin/magento setup:upgrade --keep-generated --no-interaction \
+		|| error_exit "Error while running setup:upgrade --keep-generated"
+
 	php bin/magento maintenance:disable
 fi
 
-
-########################################################################################################################
-info "Run additional scripts"
-########################################################################################################################
-
-triggerHook "post"
+triggerHook "post-install"
 
 
 ########################################################################################################################
 # Finished
 ########################################################################################################################
 
-echo -e "\n${BACKGROUND_GREEN} Successfully deployed! ${COLOR_RESET}\n"
+echo -e "\n${SUCCESS_COLOR} Installation was successful! ${COLOR_RESET}\n"
 
 triggerHook "cleanup"
 
-unset RELEASEFOLDER
+unset PROJECT_ROOT
 unset VALID_ENVIRONMENTS
 unset ENVIRONMENT
 unset SKIP_SYSTEMSTORAGE_IMPORT
-unset SHAREDFOLDER
+unset SHARED_DIR

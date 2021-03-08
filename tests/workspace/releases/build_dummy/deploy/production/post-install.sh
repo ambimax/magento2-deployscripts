@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-echo "hook:validation:triggered"
+echo "hook:post-installation:triggered"
 
 echo "Is production environment"

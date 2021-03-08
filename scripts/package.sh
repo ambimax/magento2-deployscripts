@@ -3,9 +3,11 @@
 
 # exit when any command fails
 set -e
+set -o pipefail
+set -u
 
 # debug
-# set -x
+[ -n "${BATS_ROOT:-}" ] && set -x
 
 ########################################################################################################################
 # Variables
@@ -24,8 +26,17 @@ export COLOR_RESET="\033[0m"
 export ERROR_COLOR="\e[41;1;37m"
 export SUCCESS_COLOR="\e[30;48;5;82m"
 
+FILENAME=
+BUILD_NUMBER=
+GIT_REVISION=
+
 SOURCE_DIR=$PWD
 TARGET_DIR='artifacts'
+SKIP_CONFIG_DUMP=false
+SKIP_DI_COMPILE=false
+SKIP_STATIC_CONTENT_DEPLOY=false
+SKIP_EXTRA_PACKAGE=false
+SAVE_FILELIST=false
 
 ########################################################################################################################
 # Functions
@@ -49,11 +60,17 @@ function usage {
     echo "Usage:"
     echo "$0 --filename <filename> --build <buildNr>  --source-dir <sourceDir> [--git-revision]"
     echo ""
-    echo "   -f|--filename            Filename (i.e. projectA.tar.gz)"
-    echo "   -s|--source-dir          Source folder /project_root"
-    echo "   -t|--target-dir          Target folder (i.e. artifacts/)"
-    echo "   -b|--build               Build number (i.e. 123)"
-    echo "   -g|--git-revision        GIT revision (i.e. 37ed7a1)"
+    echo "   -f|--filename                   Filename (i.e. projectA.tar.gz)"
+    echo "   -s|--source-dir                 Source folder /project_root"
+    echo "   -t|--target-dir                 Target folder (i.e. artifacts/)"
+    echo "   -b|--build                      Build number (i.e. 123)"
+    echo "   -g|--git-revision               GIT revision (i.e. 37ed7a1)"
+	echo ""
+    echo "   --skip-config-dump              Skip config dump before packaging"
+    echo "   --skip-di-compile               Skip comiling dependency injections before packaging"
+    echo "   --skip-static-content-deploy    Skip generating static content before packaging"
+    echo "   --skip-extra-package            Skip generating extra package"
+    echo "   --save-filelist                 Save filenames into text file"
     echo ""
     exit 0
 }
@@ -89,6 +106,26 @@ case $key in
     shift # past argument
     shift # past value
     ;;
+    --skip-conf-dump)
+    SKIP_CONFIG_DUMP=true
+    shift # past argument
+    ;;
+    --skip-di-compile)
+    SKIP_DI_COMPILE=true
+    shift # past argument
+    ;;
+    --skip-static-content-deploy)
+    SKIP_STATIC_CONTENT_DEPLOY=true
+    shift # past argument
+    ;;
+    --skip-extra-package)
+    SKIP_EXTRA_PACKAGE=true
+    shift # past argument
+    ;;
+    --save-filelist)
+    SAVE_FILELIST=true
+    shift # past argument
+    ;;
     -h|--help)
     usage
     shift # past argument
@@ -99,7 +136,7 @@ case $key in
     ;;
 esac
 done
-set -- "${POSITIONAL[@]}" # restore positional parameters
+# [ -n "${POSITIONAL[*]}" ] && set -- "${POSITIONAL[*]}" # restore positional parameters
 
 
 ########################################################################################################################
@@ -113,15 +150,23 @@ cd "${SOURCE_DIR}" || error_exit "Changing directory failed"
 
 [ -f 'composer.json' ] || error_exit "Could not find composer.json"
 [ -f 'pub/index.php' ] || error_exit "Could not find pub/index.php"
+[ -f 'app/etc/config.php' ] || error_exit "Could not find app/etc/config.php"
 
 ########################################################################################################################
 info "Prepare for packaging"
 ########################################################################################################################
 
 # Prepare for production
-touch .maintenance.flag
-#php bin/magento setup:di:compile
-#php bin/magento setup:static-content:deploy
+php bin/magento maintenance:enable
+
+echo "Clean caches"
+php bin/magento cache:flush
+rm -rf pub/static/* var/cache/* var/view_preprocessed/* var/page_cache/* generated/*
+
+[ "${SKIP_CONFIG_DUMP}" = "true" ] || php bin/magento app:config:dump --no-interaction
+[ "${SKIP_DI_COMPILE}" = "true" ] || php bin/magento setup:di:compile --no-interaction
+[ "${SKIP_STATIC_CONTENT_DEPLOY}" = "true" ] || \
+	php bin/magento setup:static-content:deploy --force --strategy=standard --jobs="$(nproc)" --max-execution-time=3600
 
 # Write file: build.txt
 echo "${BUILD_NUMBER}" > build.txt
@@ -138,6 +183,11 @@ printf "Build time: %s\n" "$(date "+%c")" >> pub/version.txt
 [ -f "deploy/tar_excludes.txt" ] || touch deploy/tar_excludes.txt
 
 tmpfile=$(mktemp)
+tmpfile2=$(mktemp)
+
+########################################################################################################################
+info "Start packaging"
+########################################################################################################################
 
 BASEPACKAGE="${TARGET_DIR}/${FILENAME}"
 echo "Creating base package '${BASEPACKAGE}'"
@@ -145,6 +195,7 @@ tar -vczf "${BASEPACKAGE}" \
     --exclude=./var/log \
     --exclude=./pub/media \
     --exclude=./artifacts \
+    --exclude=./app/etc/env.php \
     --exclude="${TARGET_DIR}" \
     --exclude=./tmp \
     --exclude-from="deploy/tar_excludes.txt" . > "$tmpfile" || error_exit "Creating archive failed"
@@ -152,17 +203,31 @@ tar -vczf "${BASEPACKAGE}" \
 # Remove ./ line or all files are ignored
 sed -i '/^\.\/$/d' "$tmpfile"
 
-EXTRAPACKAGE=${BASEPACKAGE/.tar.gz/.extra.tar.gz}
-echo "Creating extra package '${EXTRAPACKAGE}' with the remaining files"
-tar -czf "${EXTRAPACKAGE}" \
-    --exclude=./var/log \
-    --exclude=./pub/media \
-    --exclude=./artifacts \
-	--exclude="${TARGET_DIR}" \
-    --exclude=./tmp \
-    --exclude-from="$tmpfile" .  || error_exit "Creating extra archive failed"
+if [ "${SKIP_EXTRA_PACKAGE}" = "true" ]; then
+	echo "Skipping extra package...."
+else
+	EXTRAPACKAGE=${BASEPACKAGE/.tar.gz/.extra.tar.gz}
+	echo "Creating extra package '${EXTRAPACKAGE}' with the remaining files"
+	tar -vczf "${EXTRAPACKAGE}" \
+		--exclude=./var/log \
+		--exclude=./pub/media \
+		--exclude=./artifacts \
+		--exclude=./app/etc/env.php \
+		--exclude="${TARGET_DIR}" \
+		--exclude=./tmp \
+		--exclude-from="$tmpfile" . > "$tmpfile2" || error_exit "Creating extra archive failed"
+fi
+
+if [ "${SAVE_FILELIST}" = "true" ]; then
+	cp "$tmpfile" artifacts/filelist.txt
+	cp "$tmpfile2" artifacts/filelist.extra.txt
+fi
 
 rm "$tmpfile"
+rm "$tmpfile2"
+
+# Enable maintenance again
+php bin/magento maintenance:disable
 
 cd "${TARGET_DIR}" || error_exit "Cannot enter ${TARGET_DIR}"
 md5sum -- *.* > MD5SUMS
@@ -172,4 +237,5 @@ info "File hashes"
 ########################################################################################################################
 cat MD5SUMS
 
-echo -e "\n${BACKGROUND_GREEN} Successfully packaged! ${COLOR_RESET}\n"
+echo -e "\n${SUCCESS_COLOR} Successfully packaged! ${COLOR_RESET}\n"
+

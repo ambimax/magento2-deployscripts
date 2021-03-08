@@ -3,9 +3,11 @@
 
 # exit when any command fails
 set -e
+set -o pipefail
+set -u
 
 # debug
-# set -x
+[ -n "${BATS_ROOT:-}" ] && set -x
 
 ########################################################################################################################
 # Variables
@@ -22,11 +24,16 @@ export COLOR_RESET="\033[0m"
 
 # Backgrounds
 export ERROR_COLOR="\e[41;1;37m"
+export WARNING_COLOR="\e[41;1;37m"
 export SUCCESS_COLOR="\e[30;48;5;82m"
 
 # Defaults
 INSTALL_EXTRA_PACKAGE=0
-AWS_ARGS=""
+AWS_ARGS=
+AWS_PROFILE=
+ENVIRONMENT=
+TARGET_DIR=
+PACKAGE_URL=
 
 ########################################################################################################################
 # Functions
@@ -35,6 +42,10 @@ AWS_ARGS=""
 error_exit() {
 	echo -e "\n${ERROR_COLOR} ${1} ${COLOR_RESET}"
     exit 1;
+}
+
+warning() {
+	echo -e "\n${WARNING_COLOR} ${1} ${COLOR_RESET}"
 }
 
 info() {
@@ -67,11 +78,18 @@ function usage {
     echo ""
     echo "   -e|--environment            Environment (i.e. staging, production)"
     echo "   -p|--package-url            Package url (https, S3 or local file)"
-    echo "   -t|--target-dir             Target dir"
+    echo "   -t|--target-dir             Target dir (root of releases/ and current/)"
     echo "   --install-extra-package     Also download and install .extra.tar.gz package"
     echo ""
     echo "   --aws-profile               AWS profile name"
     echo '   --wget-args                 Wget arguments like --wget-args "--user=USERNAME --password=PASSWORD"'
+    echo ""
+    echo ""
+    echo " All environment variables and unused parameters will be send to vendor/bin/install.sh:"
+    echo ""
+    echo "   -p|--project-root             Project dir - will be set by CURRENT_RELEASE_DIR (i.e. <targetDir>/releases/build_2020202020)"
+    echo "   -s|--shared-dir               Shared dir (root of pub/media/ and var/log/)"
+    echo "   --skip-systemstorage-import   Skip systemstorage import"
     echo ""
     exit 0
 }
@@ -116,22 +134,23 @@ case $key in
     ;;
 esac
 done
-set -- "${POSITIONAL[@]}" # restore positional parameters
+[ "${#POSITIONAL[@]}" -eq 0 ] || set -- "${POSITIONAL[@]}" # restore positional parameters
 
-# Release folders
-RELEASES="${TARGET_DIR}/releases"
-RELEASENAME="build_$(date +%Y%m%d%H%M%S)"
-RELEASEFOLDER="${RELEASES}/${RELEASENAME}"
-
-# Shared folders
-SHAREDFOLDER="${TARGET_DIR}/shared"
-SHAREDFOLDERS=( "pub/media" "var/log" )
+# Define folders
+RELEASES_DIR="${TARGET_DIR}/releases"
+CURRENT_RELEASE_NAME="build_$(date +%Y%m%d%H%M%S)"
+CURRENT_RELEASE_DIR="${RELEASES_DIR}/${CURRENT_RELEASE_NAME}"
 
 EXTRAPACKAGE_URL=${PACKAGE_URL/.tar.gz/.extra.tar.gz}
 
 if [ -n "${AWS_PROFILE}" ] ; then
     AWS_ARGS="--profile ${AWS_PROFILE}"
 fi
+
+export RELEASES_DIR
+export CURRENT_RELEASE_NAME
+export CURRENT_RELEASE_DIR
+export ENVIRONMENT
 
 ########################################################################################################################
 info "Validation"
@@ -142,14 +161,8 @@ info "Validation"
 [ -z "${ENVIRONMENT}" ] && error_exit "Environment not set (-e|--environment)"
 
 # Check if releases folder exists
-[ -d "${RELEASES}" ] || error_exit "Releases dir ${RELEASES} not found"
-[ -d "${RELEASEFOLDER}" ] && error_exit "Release folder ${RELEASEFOLDER} already exists"
-[ -d "${SHAREDFOLDER}" ] || error_exit "Shared folder ${SHAREDFOLDER} not found"
-
-# Validate shared folders
-for i in "${SHAREDFOLDERS[@]}" ; do
-    [ -d "${SHAREDFOLDER}/$i" ] || error_exit "Shared folder ${SHAREDFOLDER}/$i not found";
-done
+[ -d "${RELEASES_DIR}" ] || error_exit "Releases dir ${RELEASES_DIR} not found"
+[ -d "${CURRENT_RELEASE_DIR}" ] && error_exit "Release folder ${CURRENT_RELEASE_DIR} already exists"
 
 
 ########################################################################################################################
@@ -163,7 +176,7 @@ echo "Package url:            ${PACKAGE_URL}"
 echo "Target dir:             ${TARGET_DIR}"
 echo "Environment:            ${ENVIRONMENT}"
 echo
-echo "Release folder :        ${RELEASEFOLDER}"
+echo "Release folder:         ${CURRENT_RELEASE_DIR}"
 echo
 echo "##################################################################################################################"
 echo
@@ -200,17 +213,17 @@ fi
 
 
 ########################################################################################################################
-info "Extract package into release/ folder"
+info "Extract package into ${CURRENT_RELEASE_DIR}"
 ########################################################################################################################
 
-mkdir "${RELEASEFOLDER}" || error_exit "Error while creating release folder"
+mkdir "${CURRENT_RELEASE_DIR}" || error_exit "Error while creating current release folder"
 
 echo "Extracting base package"
-tar xzf "${TMPDIR}/package.tar.gz" -C "${RELEASEFOLDER}" || error_exit "Error while extracting base package"
+tar xzf "${TMPDIR}/package.tar.gz" -C "${CURRENT_RELEASE_DIR}" || error_exit "Error while extracting base package"
 
 if [ "${INSTALL_EXTRA_PACKAGE}" == 1 ] ; then
     echo "Extracting extra package on top of base package"
-    tar xzf "${TMPDIR}/package.extra.tar.gz" -C "${RELEASEFOLDER}" || error_exit "Error while extracting extra package"
+    tar xzf "${TMPDIR}/package.extra.tar.gz" -C "${CURRENT_RELEASE_DIR}" || error_exit "Error while extracting extra package"
 fi
 
 
@@ -218,10 +231,11 @@ fi
 info "Trigger installation"
 ########################################################################################################################
 
-COMPOSER_INSTALLER="${RELEASEFOLDER}/vendor/bin/install.sh"
+COMPOSER_INSTALLER="${CURRENT_RELEASE_DIR}/vendor/bin/install.sh"
 if [ -f "${COMPOSER_INSTALLER}" ]; then
     echo "Starting composer installer"
-    "${COMPOSER_INSTALLER}" --environment "${ENVIRONMENT}" || error_exit "Composer installer failed"
+	export PROJECT_ROOT="${CURRENT_RELEASE_DIR}"
+	bash "${COMPOSER_INSTALLER}" "$@" || error_exit "Composer installer failed"
 fi
 
 
@@ -229,11 +243,11 @@ fi
 info "Update symlink to be live"
 ########################################################################################################################
 
-echo "Settings current (${RELEASES}/current) to release folder (${RELEASENAME})"
-ln -sfn "${RELEASENAME}" "${RELEASES}/current" || error_exit "Error while symlinking 'current' to release folder"
+echo "Settings current (${RELEASES_DIR}/current) to release folder (${CURRENT_RELEASE_DIR})"
+ln -sfn "${CURRENT_RELEASE_DIR}" "${RELEASES_DIR}/current" || error_exit "Error while symlinking 'current' to release folder"
 
 ########################################################################################################################
 # Finished
 ########################################################################################################################
 
-echo -e "\n${BACKGROUND_GREEN} Successfully deployed! ${COLOR_RESET}\n"
+echo -e "\n${SUCCESS_COLOR} Successfully deployed! ${COLOR_RESET}\n"

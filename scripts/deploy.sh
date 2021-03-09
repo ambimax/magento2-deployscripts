@@ -152,6 +152,8 @@ export CURRENT_RELEASE_NAME
 export CURRENT_RELEASE_DIR
 export ENVIRONMENT
 
+echo -e "\n${COLOR_GREEN}■ deploy.sh \nTobias Schifftner (@tschifftner), Ambimax GmbH\ngithub.com/ambimax"
+
 ########################################################################################################################
 info "Validation"
 ########################################################################################################################

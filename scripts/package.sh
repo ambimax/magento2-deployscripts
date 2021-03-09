@@ -138,6 +138,7 @@ esac
 done
 # [ -n "${POSITIONAL[*]}" ] && set -- "${POSITIONAL[*]}" # restore positional parameters
 
+echo -e "\n${COLOR_GREEN}■ package.sh \nTobias Schifftner (@tschifftner), Ambimax GmbH\ngithub.com/ambimax"
 
 ########################################################################################################################
 info "Validation"

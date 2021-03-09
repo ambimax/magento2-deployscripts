@@ -234,6 +234,8 @@ export -f info
 export -f symlinkSharedDirectory
 export -f waitFor
 
+echo -e "\n${COLOR_GREEN}■ install.sh \nTobias Schifftner (@tschifftner), Ambimax GmbH\ngithub.com/ambimax"
+
 triggerHook "pre"
 
 ########################################################################################################################

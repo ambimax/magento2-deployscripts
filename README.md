@@ -8,6 +8,7 @@ Bash scripts for packaging Magento2 projects and deploying it as releases on any
     - [Package](#package)
     - [Deploy](#deploy)
     - [Install](#install)
+    - [Cleanup](#cleanup)
   - [Project setup](#project-setup)
     - [Setup installation](#setup-installation)
     - [Package](#package-1)
@@ -20,6 +21,7 @@ Bash scripts for packaging Magento2 projects and deploying it as releases on any
     - [info](#info)
     - [symlinkSharedDirectory](#symlinkshareddirectory)
     - [waitFor](#waitfor)
+  - [Cleanup](#cleanup-1)
   - [References](#references)
   - [License](#license)
   - [Author](#author)
@@ -81,6 +83,14 @@ _Hint: env variables and additional parameters will be passed to vendor/bin/inst
 ./scripts/install.sh \
   --project-root "${PWD}/tests/workspace/releases/build_dummy" \
   --environment staging
+```
+
+### Cleanup
+
+```bash
+./scripts/cleanup.sh \
+  --releases-dir "${PWD}/tests/workspace/releases/" \
+  --releases-to-keep 5
 ```
 
 ## Project setup
@@ -274,6 +284,23 @@ waitFor --command "/script.sh" --timeout 5
 
 # Test tcp port
 waitFor --host www.google.com --port 443 --timeout 1
+```
+
+## Cleanup
+
+Remove old deployments
+
+| Argument                 | Description                        |
+| ------------------------ | ---------------------------------- |
+| -r \| --releases-dir     | Releases root folder /../releases/ |
+| -n \| --releases-to-keep | Number of builds to keep           |
+| --dry-run                | Enable dry run mode                |
+
+```bash
+# Remove old deployments except for last 5
+./scripts/cleanup.sh \
+  --releases-dir "${PWD}/tests/workspace/releases/" \
+  --releases-to-keep 5
 ```
 
 ## References

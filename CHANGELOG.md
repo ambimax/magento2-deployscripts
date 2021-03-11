@@ -1,3 +1,14 @@
+# [2.0.0](https://github.com/ambimax/magento2-deployscripts/compare/v1.0.0...v2.0.0) (2021-03-11)
+
+
+* refactor!: dump config is not default ([335a6df](https://github.com/ambimax/magento2-deployscripts/commit/335a6df12c3d069c496bc5d0fac68c5c98f7a34a))
+
+
+### BREAKING CHANGES
+
+* --skip-dump-config is replaced by --dump-config
+feat: added --exclude-file and --ignore-exclude-file parameter
+
 # 1.0.0 (2021-03-09)
 
 

@@ -59,5 +59,6 @@ shellcheck:
 	$(eval SHELLCHECK_FILES := $(shell find . -type f \( -iname \*.sh -o -iname \*.bash \)))
 	@docker run --tty --rm --volume "${PWD}:/mnt" koalaman/shellcheck:stable $(SHELLCHECK_FILES)
 
+basic-tests: shellcheck bats-test composer-test
 
-test: shellcheck bats-test composer-test magento2-test
+tests: basic-tests magento2-test

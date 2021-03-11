@@ -1,19 +1,19 @@
 {
-  "name": "ambimax/magento2-deployscripts",
-  "description": "Collection of scripts for Magento 2 builds and deployments",
-  "type": "magento2-component",
-  "version": "0.0.0",
-  "authors": [
-    {
-      "name": "Tobias Schifftner",
-      "email": "ts@ambimax.de",
-      "homepage": "https://www.twitter.com/tschifftner"
-    }
-  ],
-  "require": {
-    "magento/magento-composer-installer": "*"
-  },
-  "bin": [
-    "scripts/install.sh"
-  ]
+    "name": "ambimax/magento2-deployscripts",
+    "description": "Collection of scripts for Magento 2 builds and deployments",
+    "type": "magento2-component",
+    "version": "1.0.0",
+    "authors": [
+        {
+            "name": "Tobias Schifftner",
+            "email": "ts@ambimax.de",
+            "homepage": "https://www.twitter.com/tschifftner"
+        }
+    ],
+    "require": {
+        "magento/magento-composer-installer": "*"
+    },
+    "bin": [
+        "scripts/install.sh"
+    ]
 }

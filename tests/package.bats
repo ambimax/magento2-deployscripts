@@ -33,6 +33,7 @@ function teardown() {
     assert_output -p "Creating base package 'artifacts/project.tar.gz'"
     assert_output -p "Creating extra package 'artifacts/project.extra.tar.gz' with the remaining files"
     assert_output -p "Successfully packaged!"
+	assert_output -p "Removing temporary files"
     [ -f "${TEST_WORKSPACE}/releases/build_dummy/artifacts/project.tar.gz" ]
     [ -f "${TEST_WORKSPACE}/releases/build_dummy/artifacts/project.extra.tar.gz" ]
     [ -f "${TEST_WORKSPACE}/releases/build_dummy/artifacts/MD5SUMS" ]
@@ -82,4 +83,17 @@ function teardown() {
 	assert_success
 	assert [ ! -f "${TEST_WORKSPACE}/tmp/package-extra/composer.json" ]
 	assert [ -f "${TEST_WORKSPACE}/tmp/package-extra/dev/test.php" ]
+}
+
+@test "Package without exclude list" {
+	run package.sh \
+		--target-dir "${TEST_WORKSPACE}/tmp" \
+		--source-dir "${TEST_WORKSPACE}/releases/build_dummy" \
+		--ignore-exclude-file \
+		--filename package.tar.gz \
+		--build 77
+
+	assert_success
+	assert [ -f "${TEST_WORKSPACE}/tmp/package.tar.gz" ]
+	assert [ ! -f "${TEST_WORKSPACE}/tmp/package.extra.tar.gz" ]
 }

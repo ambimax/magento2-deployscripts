@@ -28,6 +28,8 @@ Bash scripts for packaging Magento2 projects and deploying it as releases on any
 
 ## Deployment Workflow
 
+![Illustration of Magento deployment workflow](docs/deployment-workflow.png)
+
 **Before Deployment**
 
 1. Package project to project.tar.gz with `package.sh`
@@ -121,11 +123,13 @@ When project is ready for deployment it must be packaged
 | -t \| --target-dir           | Target folder (i.e. artifacts/)                      |
 | -b \| --build                | Build number                                         |
 | -g \|--git-revision          | GIT revision (i.e. 37ed7a1)                          |
+| --exclude-file               | File for separating package / extra package files    |
 |                              |                                                      |
-| --skip-config-dump           | Skip config dump before packaging                    |
+| --dump-config                | Dump config before packaging                         |
 | --skip-di-compile            | Skip comiling dependency injections before packaging |
 | --skip-static-content-deploy | Skip generating static content before packaging      |
 | --skip-extra-package         | Skip generating extra package                        |
+| --ignore-exclude-file        | Ignore exclude file                                  |
 | --save-filelist              | Save filenames into text file                        |
 
 ```bash
@@ -150,6 +154,20 @@ scp artifacts/MD5SUMS \
 		artifacts/project.extra.tar.gz \
 		user@example.com:/home/project/builds/$(BUILD_NUMBER)/
 ```
+
+Separation of files in package.tar.gz and package.extra.tar.gz is configured by an exclude file:
+
+```txt
+.gitignore
+.git
+dev/
+test/
+LICENSE.txt
+```
+
+By default this file is expected at `deploy/tar_excludes.txt` - otherwise the location must be defined with `--exclude-file /deploy/file.txt`
+
+To package all files into a single artifact use `--ignore-exclude-file` parameter.
 
 If packages are available it can be deployed
 
